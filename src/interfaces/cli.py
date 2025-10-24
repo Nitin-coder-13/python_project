@@ -1,9 +1,11 @@
 import sys
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from src.models.ingredient import Ingredient
 from src.models.recipe import Recipe, RecipeIngredient
 from src.services.ingredient_service import IngredientService
 from src.services.recipe_service import RecipeService
+from src.services.shopping_service import ShoppingService
+
 
 
 class RecipeOptimizerCLI:
@@ -12,6 +14,7 @@ class RecipeOptimizerCLI:
     def __init__(self):
         self.ingredient_service = IngredientService()
         self.recipe_service = RecipeService()
+        self.shopping_service = ShoppingService()
         self.running = True
 
     def run(self):
@@ -36,8 +39,10 @@ class RecipeOptimizerCLI:
         print("1. 🥬 Manage Ingredients")
         print("2. 📖 Manage Recipes")
         print("3. 🔍 Find Matching Recipes")
-        print("4. 📊 View Statistics")
-        print("5. 🚪 Exit")
+        print("4. 🛒 Generate Shopping List")
+        print("5. ⚠️  Check Expiring Ingredients")
+        print("6. 📊 View Statistics")
+        print("7. 🚪 Exit")
 
     def handle_menu_choice(self, choice: str):
         """Handle main menu selection"""
@@ -48,11 +53,15 @@ class RecipeOptimizerCLI:
         elif choice == '3':
             self.find_recipes()
         elif choice == '4':
-            self.view_statistics()
+            self.generate_shopping_list()
         elif choice == '5':
+            self.check_expiring_ingredients()
+        elif choice == '6':
+            self.view_statistics()
+        elif choice == '7':
             self.running = False
         else:
-            print("❌ Invalid choice. Please enter 1-5.")
+            print("❌ Invalid choice. Please enter 1-7.")
 
     def ingredient_menu(self):
         """Ingredient management submenu"""
@@ -113,6 +122,15 @@ class RecipeOptimizerCLI:
                 print("❌ Unit cannot be empty.")
                 return
 
+            # Ask for expiration date
+            expiration_str = input("Expiration date (YYYY-MM-DD, or press Enter to skip): ").strip()
+            expiration_date = None
+            if expiration_str:
+                try:
+                    expiration_date = datetime.strptime(expiration_str, "%Y-%m-%d").date()
+                except ValueError:
+                    print("⚠️  Invalid date format, skipping expiration date")
+
             category = input("Category (vegetables, fruits, dairy, grains, spices, other): ").strip()
             if not category:
                 category = "other"
@@ -121,6 +139,7 @@ class RecipeOptimizerCLI:
                 name=name,
                 quantity=quantity,
                 unit=unit,
+                expiration_date=expiration_date,
                 category=category.lower()
             )
 
@@ -128,7 +147,7 @@ class RecipeOptimizerCLI:
             if success:
                 print(f"✅ Added: {ingredient}")
             else:
-                print("⚠️ Could not add ingredient.")
+                print("⚠️  Could not add ingredient.")
 
         except ValueError:
             print("❌ Invalid input. Please enter valid numbers.")
@@ -357,6 +376,145 @@ class RecipeOptimizerCLI:
             print(f"Average recipe time: {avg_time:.1f} minutes")
 
         print("=" * 50)
+
+    def generate_shopping_list(self):
+        """Generate shopping list for selected recipes"""
+        print("\n🛒 GENERATE SHOPPING LIST")
+        print("-" * 50)
+
+        recipes = self.recipe_service.get_all_recipes()
+        ingredients = self.ingredient_service.get_all_ingredients()
+
+        if not recipes:
+            print("❌ No recipes available. Add recipes first!")
+            return
+
+        # Show available recipes
+        print("\nAvailable recipes:")
+        for i, recipe in enumerate(recipes, 1):
+            print(f"{i}. {recipe.name} (serves {recipe.servings})")
+
+        # Select recipes
+        try:
+            selections = input(f"\nSelect recipes (comma-separated, 1-{len(recipes)}): ").strip()
+            if not selections:
+                print("❌ No recipes selected.")
+                return
+
+            selected_indices = [int(x.strip()) - 1 for x in selections.split(',')]
+            selected_recipes = []
+
+            for index in selected_indices:
+                if 0 <= index < len(recipes):
+                    selected_recipes.append(recipes[index])
+
+            if not selected_recipes:
+                print("❌ No valid recipes selected.")
+                return
+
+            # Generate shopping list
+            shopping_list = self.shopping_service.generate_shopping_list(
+                selected_recipes,
+                ingredients
+            )
+
+            if not shopping_list:
+                print("\n✅ You have all ingredients needed!")
+                return
+
+            # Display shopping list
+            formatted = self.shopping_service.format_shopping_list(shopping_list)
+            print(f"\n{formatted}")
+
+            # Show statistics
+            stats = self.shopping_service.calculate_estimated_items_count(shopping_list)
+            print(f"\n📊 Total items to buy: {stats['total_items']}")
+
+            # Offer to save
+            save_choice = input("\n💾 Save shopping list to file? (y/n): ").strip().lower()
+            if save_choice == 'y':
+                filename = f"shopping_list_{datetime.now().strftime('%Y%m%d_%H%M')}.txt"
+                if self.shopping_service.export_shopping_list(shopping_list, filename):
+                    print(f"✅ Shopping list saved to {filename}")
+                else:
+                    print("❌ Failed to save shopping list")
+
+        except ValueError:
+            print("❌ Invalid input. Please enter numbers separated by commas.")
+        except Exception as e:
+            print(f"❌ Error generating shopping list: {e}")
+
+        input("\nPress Enter to continue...")
+
+    def check_expiring_ingredients(self):
+        """Check for ingredients expiring soon"""
+        print("\n⚠️  EXPIRING INGREDIENTS")
+        print("-" * 50)
+
+        # Get expiring and expired ingredients
+        expiring_soon = self.ingredient_service.get_expiring_soon(days=7)
+        expired = self.ingredient_service.get_expired_ingredients()
+
+        if not expiring_soon and not expired:
+            print("✅ No ingredients expiring in the next 7 days!")
+            input("\nPress Enter to continue...")
+            return
+
+        # Show expired ingredients first
+        if expired:
+            print("\n❌ EXPIRED INGREDIENTS:")
+            for ing in expired:
+                days_ago = abs(ing.days_until_expiry())
+                print(f"  • {ing.name} - Expired {days_ago} days ago")
+            print("\n⚠️  Consider removing expired ingredients!")
+
+        # Show expiring soon
+        if expiring_soon:
+            print("\n⏰ EXPIRING SOON (next 7 days):")
+            for ing in expiring_soon:
+                days_left = ing.days_until_expiry()
+                if days_left == 0:
+                    print(f"  • {ing.name} - EXPIRES TODAY!")
+                elif days_left == 1:
+                    print(f"  • {ing.name} - Expires tomorrow")
+                else:
+                    print(f"  • {ing.name} - Expires in {days_left} days")
+
+        # Suggest recipes using expiring ingredients
+        print("\n💡 SUGGESTED RECIPES (using expiring ingredients):")
+
+        all_recipes = self.recipe_service.get_all_recipes()
+        all_ingredients = self.ingredient_service.get_all_ingredients()
+
+        if all_recipes:
+            from src.services.matching_service import RecipeMatchingService
+            matcher = RecipeMatchingService()
+
+            # Find recipes we can make
+            matches = matcher.find_matching_recipes(
+                all_ingredients,
+                all_recipes,
+                min_match_score=0.7
+            )
+
+            # Filter to recipes that use expiring ingredients
+            expiring_names = {ing.name for ing in expiring_soon}
+            suggested = []
+
+            for recipe, score, missing, matched in matches:
+                recipe_ing_names = {ing.name for ing in recipe.ingredients}
+                if recipe_ing_names & expiring_names:  # Has overlap
+                    suggested.append((recipe, score))
+
+            if suggested:
+                for recipe, score in suggested[:3]:  # Show top 3
+                    print(f"  • {recipe.name} ({score * 100:.0f}% match, {recipe.total_time} min)")
+            else:
+                print("  No recipes found using expiring ingredients")
+        else:
+            print("  No recipes available")
+
+        input("\nPress Enter to continue...")
 
 
 def main():
