@@ -52,3 +52,26 @@ class IngredientService:
     def get_total_count(self) -> int:
         """Get total number of ingredients"""
         return len(self.get_all_ingredients())
+
+    def get_expiring_soon(self, days: int = 7) -> List[Ingredient]:
+        """Get ingredients expiring within specified days"""
+        all_ingredients = self.get_all_ingredients()
+        expiring = []
+
+        for ingredient in all_ingredients:
+            if ingredient.expiration_date:
+                days_left = ingredient.days_until_expiry()
+                if days_left is not None and 0 <= days_left <= days:
+                    expiring.append(ingredient)
+
+        return sorted(expiring, key=lambda x: x.days_until_expiry() or 999)
+
+    def get_expired_ingredients(self) -> List[Ingredient]:
+        """Get all expired ingredients"""
+        all_ingredients = self.get_all_ingredients()
+        return [ing for ing in all_ingredients if ing.is_expired()]
+
+    def get_ingredients_by_category(self, category: str) -> List[Ingredient]:
+        """Get ingredients filtered by category"""
+        all_ingredients = self.get_all_ingredients()
+        return [ing for ing in all_ingredients if ing.category.lower() == category.lower()]

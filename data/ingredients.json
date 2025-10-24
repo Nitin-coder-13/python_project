@@ -28,5 +28,15 @@
     "cost_per_unit": 0.0,
     "created_at": "2025-10-24T11:07:43.432002",
     "last_updated": "2025-10-24T11:07:43.432015"
+  },
+  {
+    "name": "eggs",
+    "quantity": 6.0,
+    "unit": "pieces",
+    "expiration_date": "2025-10-26",
+    "category": "dairy",
+    "cost_per_unit": 0.0,
+    "created_at": "2025-10-24T18:29:04.579500",
+    "last_updated": "2025-10-24T18:29:04.579512"
   }
 ]
