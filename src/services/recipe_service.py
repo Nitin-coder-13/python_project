@@ -1,6 +1,8 @@
 from typing import List, Optional
 from src.models.recipe import Recipe
 from src.utils.filehandler import FileHandler
+from typing import List, Optional, Tuple
+from src.models.ingredient import Ingredient
 
 
 class RecipeService:
@@ -46,3 +48,20 @@ class RecipeService:
     def get_total_count(self) -> int:
         """Get total number of recipes"""
         return len(self.get_all_recipes())
+
+    def find_matching_recipes(
+            self,
+            available_ingredients: List[Ingredient],
+            min_match_score: float = 0.7
+    ) -> List[Tuple[Recipe, float, List[str], List[str]]]:
+        """Find recipes matching available ingredients"""
+        from src.services.matching_service import RecipeMatchingService
+
+        matcher = RecipeMatchingService()
+        all_recipes = self.get_all_recipes()
+
+        return matcher.find_matching_recipes(
+            available_ingredients,
+            all_recipes,
+            min_match_score
+        )

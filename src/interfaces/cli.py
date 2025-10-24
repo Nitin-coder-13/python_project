@@ -288,43 +288,60 @@ class RecipeOptimizerCLI:
             print(f"❌ Recipe '{name}' not found.")
 
     def find_recipes(self):
-        """Find recipes that match available ingredients"""
+        """Find recipes matching available ingredients with unit conversion"""
         print("\n🔍 FIND MATCHING RECIPES")
         print("-" * 30)
 
-        available_ingredients = self.ingredient_service.get_all_ingredients()
-        all_recipes = self.recipe_service.get_all_recipes()
+        ingredients = self.ingredient_service.get_all_ingredients()
+        recipes = self.recipe_service.get_all_recipes()
 
-        if not available_ingredients:
+        if not ingredients:
             print("❌ No ingredients available. Add ingredients first!")
             return
 
-        if not all_recipes:
+        if not recipes:
             print("❌ No recipes available. Add recipes first!")
             return
 
-        matching_recipes = []
-        for recipe in all_recipes:
-            score, missing, matched = recipe.calculate_match_score(available_ingredients)
-            if score > 0:
-                matching_recipes.append((recipe, score, missing, matched))
+        # Get search parameters
+        min_match_str = input("Minimum match percentage (default 70): ").strip()
+        min_match = 0.7
+        if min_match_str:
+            try:
+                min_match = float(min_match_str) / 100
+                min_match = max(0.0, min(1.0, min_match))
+            except ValueError:
+                print("⚠️ Invalid percentage, using default 70%")
 
-        if not matching_recipes:
-            print("❌ No recipes can be made with available ingredients.")
+        # Use the new matching service
+        from src.services.matching_service import RecipeMatchingService
+        matcher = RecipeMatchingService()
+
+        all_matches = matcher.find_matching_recipes(
+            ingredients, recipes, min_match, allow_substitutions=True
+        )
+
+        if not all_matches:
+            print(f"\n❌ No recipes found with {min_match * 100:.0f}% match or better.")
             return
 
-        # Sort by match score
-        matching_recipes.sort(key=lambda x: -x[1])
-
-        print(f"\n🍳 MATCHING RECIPES ({len(matching_recipes)} found)")
-        print("-" * 50)
-        for i, (recipe, score, missing, matched) in enumerate(matching_recipes, 1):
+        print(f"\n🍳 MATCHING RECIPES ({len(all_matches)} found)")
+        print("=" * 60)
+        for i, (recipe, score, missing, matched) in enumerate(all_matches, 1):
             print(f"\n{i}. {recipe.name}")
-            print(f"   Match: {score * 100:.0f}% | Time: {recipe.total_time} min")
-            print(f"   Available: {', '.join(matched[:3])}" if matched else "   Available: None")
-            if missing:
-                print(f"   Missing: {', '.join(missing[:2])}")
+            print(f"   Match: {score * 100:.0f}% | Time: {recipe.total_time} min | Difficulty: {recipe.difficulty}")
 
+            if matched:
+                print(f"   ✅ Available: {', '.join(matched[:3])}")
+                if len(matched) > 3:
+                    print(f"       ... and {len(matched) - 3} more")
+
+            if missing and score < 1.0:
+                print(f"   ❌ Missing: {', '.join(missing[:2])}")
+                if len(missing) > 2:
+                    print(f"       ... and {len(missing) - 2} more")
+
+        input("\nPress Enter to continue...")
     def view_statistics(self):
         """Display statistics"""
         ingredients = self.ingredient_service.get_all_ingredients()
